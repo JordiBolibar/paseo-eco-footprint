@@ -18,7 +18,9 @@ screen with the methodology behind the numbers.
   "everyday equivalents" section (phone charges, cups of coffee, car
   kilometres) to feel the scale.
 - **Full screen** (also in the Command Center): longer history, per-model
-  breakdown and a plain-word methodology section.
+  breakdown (tokens consumed, energy, CO2e), an efficiency card (energy and
+  CO2e per 1,000 output tokens per model) and a plain-word methodology
+  section.
 
 ## How it works
 

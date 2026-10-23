@@ -109,7 +109,7 @@ function Change({
 
 /**
  * One row per model: swatch, name, an "est." tag when the default size stood in, share of the
- * period's CO2e, output tokens, energy, CO2e.
+ * period's CO2e, tokens consumed, energy, CO2e.
  */
 export function ModelList({
   theme,
@@ -156,7 +156,7 @@ export function ModelList({
               fontVariant: ["tabular-nums"],
             }}
           >
-            {formatTokens(model.impacts.usage.outputTokens)}
+            {formatTokens(model.impacts.usage.totalTokens)}
           </Text>
           <Text
             style={{
@@ -182,6 +182,10 @@ export function ModelList({
           </Text>
         </View>
       ))}
+      <Text style={{ fontSize: FONT.caption, color: theme.colors.foregroundMuted }}>
+        Tokens are everything consumed: input, cached and output. Energy and CO2e are driven by
+        output tokens only.
+      </Text>
     </View>
   );
 }

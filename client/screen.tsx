@@ -2,10 +2,10 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useState, type ReactNode } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { Pressable, ScrollView, Text, View, type PressableStateCallbackType, type TextStyle } from "react-native";
 import type { FootprintPeriod, PeriodKind } from "./data";
-import { Legend, PERIOD_OPTIONS, PeriodBars, Segmented } from "./charts";
-import { useFootprintReport, type FootprintReport } from "./data";
+import { foldModels, modelSwatch, useFootprintReport, type FootprintReport } from "./data";
+import { Legend, PERIOD_OPTIONS, PeriodBars, Segmented, SwatchDot } from "./charts";
 import {
   CURRENT_LABEL,
   formatAgo,
@@ -14,6 +14,7 @@ import {
   formatPercent,
   formatPeriodLong,
   formatTokens,
+  modelLabel,
 } from "./format";
 import { FONT, Headline, ModelList } from "./summary";
 
@@ -132,8 +133,84 @@ function Stats({ theme, period }: { theme: PluginTheme; period: FootprintPeriod 
   );
 }
 
-/** Plain-word notes about what the numbers are and are not. */
-function Methodology({ theme, report }: { theme: PluginTheme; report: FootprintReport }) {
+/**
+ * Energy and CO2e per 1,000 output tokens: how efficient each model is.
+ * The estimate is linear in output tokens, so this rate is a property of
+ * the model and stays the same in every period. Lower is more efficient.
+ */
+function Efficiency({
+  theme,
+  order,
+  period,
+}: {
+  theme: PluginTheme;
+  order: readonly string[];
+  period: FootprintPeriod;
+}) {
+  const models = foldModels(period.models, order);
+  if (models.length === 0) return null;
+  const header: TextStyle = {
+    fontSize: FONT.caption,
+    color: theme.colors.foregroundMuted,
+  };
+  const cell: TextStyle = {
+    fontSize: FONT.body,
+    color: theme.colors.foreground,
+    fontVariant: ["tabular-nums"],
+  };
+  return (
+    <Card theme={theme} title="Efficiency">
+      <View style={{ gap: 2 }}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Text style={{ flexShrink: 1, ...header }}>Model</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ width: 68, textAlign: "right", ...header }}>Output</Text>
+          <Text style={{ width: 60, textAlign: "right", ...header }}>Wh / 1k</Text>
+          <Text style={{ width: 72, textAlign: "right", ...header }}>CO2e / 1k</Text>
+        </View>
+        {models.map((model) => {
+          const output = model.impacts.usage.outputTokens;
+          const perThousand = (value: number) => (output > 0 ? (value / output) * 1000 : 0);
+          return (
+            <View
+              key={model.model}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 24 }}
+            >
+              <SwatchDot swatch={modelSwatch(theme, order, model.model)} />
+              <Text
+                numberOfLines={1}
+                style={{ flexShrink: 1, fontSize: FONT.body, color: theme.colors.foreground }}
+              >
+                {modelLabel(model.model)}
+              </Text>
+              {model.estimated ? (
+                <Text style={{ fontSize: FONT.caption, color: theme.colors.foregroundMuted }}>
+                  est.
+                </Text>
+              ) : null}
+              <View style={{ flex: 1 }} />
+              <Text style={{ width: 68, textAlign: "right", ...cell }}>
+                {formatTokens(output)}
+              </Text>
+              <Text style={{ width: 60, textAlign: "right", ...cell }}>
+                {formatEnergy(perThousand(model.impacts.energyWh))}
+              </Text>
+              <Text style={{ width: 72, textAlign: "right", ...cell }}>
+                {formatCo2e(perThousand(model.impacts.gwpGco2eq))}
+              </Text>
+            </View>
+          );
+        })}
+        <Text style={{ fontSize: FONT.caption, color: theme.colors.foregroundMuted }}>
+          Energy and CO2e per 1,000 output tokens, over the selected period. Lower is more
+          efficient.
+        </Text>
+      </View>
+    </Card>
+  );
+}
+
+/** Plain-word notes about what the numbers are and are not. */function Methodology({ theme, report }: { theme: PluginTheme; report: FootprintReport }) {
   const lines = [
     "These are estimates from a model, not measurements. Read them as orders of magnitude.",
     "The estimate is driven by output tokens. Input and cached tokens do not count.",
@@ -249,6 +326,7 @@ function Body({
           <Card theme={theme} title="By model">
             <ModelList theme={theme} order={report.models} period={period} />
           </Card>
+          <Efficiency theme={theme} order={report.models} period={period} />
         </>
       ) : null}
 
