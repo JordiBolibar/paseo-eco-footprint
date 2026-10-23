@@ -9,10 +9,11 @@ import {
   type LayoutChangeEvent,
   type PressableStateCallbackType,
 } from "react-native";
-import type { PeriodKind } from "./data";
+import type { FootprintPeriod, PeriodKind } from "./data";
 import { Legend, PaceBar, PERIOD_OPTIONS, PeriodBars, Segmented, modelSegments } from "./charts";
 import { TYPICAL_DAYS, typicalDay, useFootprintReport } from "./data";
 import { formatAgo, formatCo2e, formatEnergy, formatPercent } from "./format";
+import { everydayEquivalents } from "./references";
 import { FONT, Headline, ModelList } from "./summary";
 
 // Geometry follows the built-in usage summary and host-monitor in the same footer.
@@ -213,7 +214,91 @@ export function FootprintPopover({ theme, layout, openScreen }: PluginPopoverPro
       <Legend theme={theme} order={data.models} periods={periods} />
       <View style={{ height: 1, backgroundColor: theme.colors.border }} />
       <ModelList theme={theme} order={data.models} period={periods[selected]} />
+      <Equivalents theme={theme} period={periods[selected]} />
       <Footer theme={theme} report={data} onMore={() => openScreen({ screenId: "footprint" })} />
+    </View>
+  );
+}
+
+/**
+ * A folded-away extra for the curious: the selected period's totals as everyday
+ * things (phone charges, coffee, car kilometres). Collapsed by default, so it
+ * stays out of the way of the main numbers.
+ */
+function Equivalents({
+  theme,
+  period,
+}: {
+  theme: PluginTheme;
+  period: FootprintPeriod | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!period || (period.impacts.energyWh <= 0 && period.impacts.gwpGco2eq <= 0)) return null;
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Everyday equivalents"
+        onPress={() => setOpen(!open)}
+        style={({ hovered }: HoverState) => ({
+          flexDirection: "row" as const,
+          alignItems: "center" as const,
+          gap: 4,
+          paddingVertical: 3,
+          paddingHorizontal: 4,
+          marginLeft: -4,
+          borderRadius: 6,
+          backgroundColor: hovered ? theme.colors.surface2 : undefined,
+        })}
+      >
+        <Icon
+          name={open ? "ChevronDown" : "ChevronRight"}
+          size={12}
+          color={theme.colors.foregroundMuted}
+        />
+        <Text style={{ fontSize: FONT.caption, color: theme.colors.foregroundMuted }}>
+          Everyday equivalents
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 2, marginLeft: 16 }}>
+          {everydayEquivalents(period).map((item) => (
+            <View
+              key={item.label}
+              style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}
+            >
+              <Text
+                style={{
+                  fontSize: FONT.body,
+                  color: theme.colors.foreground,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                ≈ {item.count}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{ flexShrink: 1, fontSize: FONT.body, color: theme.colors.foreground }}
+              >
+                {item.label}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text
+                style={{
+                  fontSize: FONT.caption,
+                  color: theme.colors.foregroundMuted,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {item.basis}
+              </Text>
+            </View>
+          ))}
+          <Text style={{ fontSize: FONT.caption, color: theme.colors.foregroundMuted }}>
+            Typical values for France (ADEME and common figures), just to feel the scale.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
