@@ -4,6 +4,7 @@ import type {
   PluginSettingsState,
 } from "@getpaseo/plugin/server";
 import { footprintReportRpc } from "../shared/report";
+import { scanClaudeSessions } from "./claude";
 import { scanSessions } from "./journals";
 import {
   appendLedger,
@@ -81,14 +82,24 @@ export function createFootprintService(server: PluginServerContext): () => void 
       modelOverrides,
     });
     offsets = result.offsets;
-    if (result.sessions.length > 0) {
-      const now = Date.now();
-      const entries: LedgerEntry[] = result.sessions.map((session) => ({
-        ts: now,
+    const claude = await scanClaudeSessions({ offsets });
+    offsets = claude.offsets;
+    const entries: LedgerEntry[] = [
+      ...result.sessions.map((session) => ({
+        ts: Date.now(),
         model: session.model,
         history: false,
         usage: session.usage,
-      }));
+      })),
+      // Claude records carry real timestamps, so they keep their own day.
+      ...claude.entries.map((entry) => ({
+        ts: entry.ts,
+        model: entry.model,
+        history: false,
+        usage: entry.usage,
+      })),
+    ];
+    if (entries.length > 0) {
       await appendLedger(entries);
     }
     await saveOffsets(offsets);
@@ -144,7 +155,10 @@ export function createFootprintService(server: PluginServerContext): () => void 
       defaultModel: current.defaultModel,
       modelOverrides,
     });
-    offsets = result.offsets;
+    // The Claude logs too: without this, their whole history would be
+    // appended again on the next capture.
+    const claudeSkipped = await scanClaudeSessions({ offsets: {} });
+    offsets = { ...result.offsets, ...claudeSkipped.offsets };
     await saveOffsets(offsets);
   });
 

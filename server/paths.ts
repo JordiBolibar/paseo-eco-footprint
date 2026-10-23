@@ -4,6 +4,9 @@ import { join } from "node:path";
 /** Vibe session journals, one directory per session (plus `child-*` dirs). */
 export const SESSIONS_DIR = join(homedir(), ".vibe", "logs", "session", "unified");
 
+/** Claude Code session logs, one `.jsonl` file per session under a project dir. */
+export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
+
 /** The plugin's own persistent data. */
 export const DATA_DIR = join(homedir(), ".paseo", "plugin-data", "eco-footprint");
 

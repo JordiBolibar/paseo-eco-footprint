@@ -46,9 +46,13 @@ export function addUsage(target: UsageTotals, add: UsageTotals): void {
   target.totalTokens += add.totalTokens;
 }
 
-function numberOrZero(value: unknown): number {
+export function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
+
+// Read files in chunks instead of one buffer: Claude Code session logs can
+// be hundreds of megabytes.
+const CHUNK_BYTES = 4 * 1024 * 1024;
 
 // Extract the token usage of one journal record, or null for any other record.
 // Every line is parsed as JSON: the same strings also appear inside stored
@@ -73,32 +77,57 @@ function usageOfRecord(record: unknown): UsageTotals | null {
   };
 }
 
-// Read the journal file from `offset` and return its complete new lines plus
-// the byte offset after them. An incomplete last line stays unread, so a
-// record written while we read is picked up on the next scan.
-async function readNewLines(
+// Read the file from `offset` and pass every complete new line to `onLine`
+// as it is read, so huge files never sit in memory as a whole. Returns the
+// byte offset after the complete lines. An incomplete last line stays
+// unread, so a record written while we read is picked up on the next scan.
+// Newlines are split at the byte level, which is safe in UTF-8: no
+// multi-byte sequence contains 0x0A.
+export async function readNewLinesStream(
   path: string,
   offset: number,
-): Promise<{ lines: string[]; nextOffset: number }> {
+  onLine: (line: string) => void,
+): Promise<number> {
   const handle = await open(path, "r");
   try {
     const size = (await handle.stat()).size;
-    if (size === offset) return { lines: [], nextOffset: offset };
+    if (size === offset) return offset;
     // A file smaller than the offset was replaced: read it from the start.
     const start = offset >= 0 && offset < size ? offset : 0;
-    const buffer = Buffer.alloc(size - start);
-    await handle.read(buffer, 0, buffer.length, start);
-    const text = buffer.toString("utf8");
-    const lastNewline = text.lastIndexOf("\n");
-    if (lastNewline === -1) return { lines: [], nextOffset: start };
-    const consumed = text.slice(0, lastNewline + 1);
-    return {
-      lines: consumed.split("\n").filter((line) => line !== ""),
-      nextOffset: start + Buffer.byteLength(consumed),
-    };
+    let pending = Buffer.alloc(0);
+    let position = start;
+    while (position < size) {
+      const want = Math.min(CHUNK_BYTES, size - position);
+      const buffer = Buffer.alloc(want);
+      // A read can return fewer bytes than asked for: only consume what
+      // came back, and stop on zero so the loop cannot spin forever.
+      const { bytesRead } = await handle.read(buffer, 0, want, position);
+      if (bytesRead <= 0) break;
+      position += bytesRead;
+      pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
+      let newlineAt = pending.indexOf(0x0a);
+      while (newlineAt !== -1) {
+        if (newlineAt > 0) onLine(pending.subarray(0, newlineAt).toString("utf8"));
+        pending = pending.subarray(newlineAt + 1);
+        newlineAt = pending.indexOf(0x0a);
+      }
+    }
+    // Bytes after the last newline are the incomplete tail: not consumed.
+    return position - pending.length;
   } finally {
     await handle.close();
   }
+}
+
+// Read the file from `offset` and return its complete new lines plus the
+// byte offset after them. For files small enough to hold in memory.
+export async function readNewLines(
+  path: string,
+  offset: number,
+): Promise<{ lines: string[]; nextOffset: number }> {
+  const lines: string[] = [];
+  const nextOffset = await readNewLinesStream(path, offset, (line) => lines.push(line));
+  return { lines, nextOffset };
 }
 
 interface SessionMeta {

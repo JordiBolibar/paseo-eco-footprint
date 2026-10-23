@@ -139,7 +139,7 @@ function Methodology({ theme, report }: { theme: PluginTheme; report: FootprintR
     "The estimate is driven by output tokens. Input and cached tokens do not count.",
     "Energy and water cover the usage phase only. CO2e also includes the embodied share from making the hardware.",
     report.zoneIsDefault
-      ? `Electricity mix zone: ${report.zone}. This is EcoLogits's assumption for the provider, not a measured region.`
+      ? "Electricity mix zone: each provider's EcoLogits assumption (Sweden for Mistral, USA for Anthropic), not a measured region. Set a zone in the plugin settings to override it."
       : `Electricity mix zone: ${report.zone}, set in the plugin settings.`,
     `Sessions that do not record a model are counted as ${report.defaultModel}.`,
     "Models that are not in the EcoLogits data are estimated from a default size and marked \"est.\".",

@@ -52,7 +52,7 @@ export const footprintReportRpc = defineRpc({
     timezone: z.string(),
     /** ISO 3166-1 alpha-3 electricity mix zone used for the estimates. */
     zone: z.string(),
-    /** True when the zone is EcoLogits's default for the provider (the
+    /** True when the zone is EcoLogits's default for the providers (the
      * setting is empty or not a registered zone), false when the user set
      * a valid zone in the plugin settings. */
     zoneIsDefault: z.boolean(),

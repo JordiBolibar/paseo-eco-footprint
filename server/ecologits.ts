@@ -10,8 +10,15 @@ import {
 } from "@ecologits/ecologits.js";
 import type { EcoSettings } from "./settings";
 
-// All models we run are hosted on Mistral's infrastructure.
-const PROVIDER = "mistralai" as const;
+// Vibe models run on Mistral's infrastructure; Claude Code models on
+// Anthropic's. Everything else (local models, unknown names) is assumed
+// to run on Mistral's.
+type Provider = "mistralai" | "anthropic";
+
+/** The provider a model name runs on. */
+export function providerForModel(model: string): Provider {
+  return model.startsWith("claude") ? "anthropic" : "mistralai";
+}
 
 // The package models the latency from the parameter count and caps it at
 // requestLatency. A huge value lets that regression decide; we never invent
@@ -30,19 +37,19 @@ export interface ModelImpacts {
   estimated: boolean;
 }
 
-/** Vibe model name to EcoLogits model name. */
-function ecologitsModelName(model: string): string {
+/** Model name to EcoLogits model name. */
+function ecologitsModelName(model: string, provider: Provider): string {
   // GLM 5.3 is registered under the name of Mistral's deployment of it.
-  if (model === "glm-5-3") return "zai-glm-5-3";
+  if (provider === "mistralai" && model === "glm-5-3") return "zai-glm-5-3";
   return model;
 }
 
 /** The zone used for the estimates: the setting when registered, else the
- * EcoLogits default for the provider (SWE for Mistral). */
-export function resolveZone(settingZone: string): string {
+ * EcoLogits default for the provider (SWE for Mistral, USA for Anthropic). */
+export function resolveZone(settingZone: string, provider: Provider = "mistralai"): string {
   const zone = settingZone.trim().toUpperCase();
   if (zone !== "" && electricityMixes.findElectricityMix(zone)) return zone;
-  return PROVIDER_CONFIG_MAP[PROVIDER].datacenterLocation ?? "WOR";
+  return PROVIDER_CONFIG_MAP[provider].datacenterLocation ?? "WOR";
 }
 
 /** True when the resolved zone is the provider default: the setting is
@@ -76,15 +83,21 @@ export function computeModelImpacts(
   if (outputTokens <= 0) {
     return { energyWh: 0, gwpGco2eq: 0, gwpEmbodiedGco2eq: 0, estimated: false };
   }
-  const name = ecologitsModelName(model);
-  if (models.findModel(PROVIDER, name)) {
+  const provider = providerForModel(model);
+  const name = ecologitsModelName(model, provider);
+  // The report resolves one zone for display, but when the user did not set
+  // one, each provider is estimated with its own default mix.
+  const mixZone = zoneIsProviderDefault(settings.electricityMixZone)
+    ? resolveZone(settings.electricityMixZone, provider)
+    : zone;
+  if (models.findModel(provider, name)) {
     try {
       const result = llmImpacts({
-        provider: PROVIDER,
+        provider,
         modelName: name,
         outputTokenCount: outputTokens,
         requestLatency: UNBOUNDED_LATENCY_S,
-        electricityMixZone: zone,
+        electricityMixZone: mixZone,
       });
       if (!result.hasErrors) {
         return {
@@ -97,11 +110,11 @@ export function computeModelImpacts(
     }
   }
   // Unknown model: assume a dense model with the configured parameter count.
-  const mix = electricityMixes.findElectricityMix(zone);
+  const mix = electricityMixes.findElectricityMix(mixZone);
   if (!mix) {
     return { energyWh: 0, gwpGco2eq: 0, gwpEmbodiedGco2eq: 0, estimated: true };
   }
-  const provider = PROVIDER_CONFIG_MAP[PROVIDER];
+  const providerConfig = PROVIDER_CONFIG_MAP[provider];
   const parameters = settings.defaultParameterCountBillions;
   try {
     const result = computeLlmImpacts({
@@ -113,8 +126,8 @@ export function computeModelImpacts(
       ifElectricityMixPe: mix.pe,
       ifElectricityMixGwp: mix.gwp,
       ifElectricityMixWue: mix.wue,
-      datacenterPue: provider.datacenterPue,
-      datacenterWue: provider.datacenterWue,
+      datacenterPue: providerConfig.datacenterPue,
+      datacenterWue: providerConfig.datacenterWue,
     });
     return { ...numbersOf(result.energy, result.gwp, result.embodied.gwp), estimated: true };
   } catch {

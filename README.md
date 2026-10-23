@@ -14,25 +14,31 @@ screen with the methodology behind the numbers.
   meter. The fill is today's CO2e split by model; the vertical line marks a
   typical day (the median of your active days in the last 28).
 - **Popover**: day / week / month totals, the change against the previous
-  period, a stacked chart by model and a per-model list.
+  period, a stacked chart by model, a per-model list, and a folded-away
+  "everyday equivalents" section (phone charges, cups of coffee, car
+  kilometres) to feel the scale.
 - **Full screen** (also in the Command Center): longer history, per-model
   breakdown and a plain-word methodology section.
 
 ## How it works
 
 The plugin reads the local session journals of [Mistral
-Vibe](https://github.com/mistralai/vibe) agents, which record the token usage
-of every model generation, and keeps its own ledger with timestamps. On the
-first run it backfills the existing journals once, attributed to session start
-dates and marked as estimated history. After that it reads only journal tails
-(byte offsets) and refreshes when an agent finishes a turn.
+Vibe](https://github.com/mistralai/vibe) agents and the session logs of
+[Claude Code](https://claude.com/claude-code) agents, which record the token
+usage of every model generation, and keeps its own ledger with timestamps.
+Vibe journals have no timestamps, so on the first run the existing journals
+are backfilled once, attributed to session start dates and marked as
+estimated history. Claude Code logs carry real timestamps, so their history
+keeps its true daily split. After that it reads only file tails (byte
+offsets) and refreshes when an agent finishes a turn.
 
 Impacts are computed with
 [@ecologits/ecologits.js](https://www.npmjs.com/package/@ecologits/ecologits.js),
 the TypeScript port of the EcoLogits methodology: energy and CO2e (usage +
-embodied) from the model's parameter count and the output token count. Days
-are grouped in your timezone, the one Paseo runs in for you, not the
-daemon's.
+embodied) from the model's parameter count and the output token count. Each
+provider is estimated with its own EcoLogits defaults (Mistral models with
+the Swedish mix, Anthropic models with the US mix). Days are grouped in
+your timezone, the one Paseo runs in for you, not the daemon's.
 
 Nothing leaves your machine: all data is read locally and the EcoLogits model
 data is compiled into the package.
@@ -48,8 +54,8 @@ paseo plugin install github:JordiBolibar/paseo-eco-footprint
 ## Settings
 
 - `electricityMixZone`: ISO 3166-1 alpha-3 zone for the electricity mix
-  (empty = the EcoLogits default for the provider, for example SWE for
-  Mistral).
+  (empty = each provider's EcoLogits default, for example SWE for Mistral
+  and USA for Anthropic).
 - `defaultModel`: model assumed for sessions that do not record one
   (default `glm-5-3`).
 - `defaultParameterCountBillions`: assumed size for models not in the
@@ -63,7 +69,8 @@ paseo plugin install github:JordiBolibar/paseo-eco-footprint
 - The electricity mix zone is an assumption, not a measured region.
 - Only usage logged on this machine is counted. Local models (for example a
   local llamacpp server) are not counted.
-- History from before the plugin was installed has no daily split.
+- Vibe history from before the plugin was installed has no daily split.
+  Claude Code history keeps its real daily split.
 
 ## Develop
 

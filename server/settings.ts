@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const settingsSchema = z.object({
   /** ISO 3166-1 alpha-3 electricity mix zone. Empty means the EcoLogits
-   * default for the provider (SWE for Mistral). */
+   * default of each provider (SWE for Mistral, USA for Anthropic). */
   electricityMixZone: z
     .string()
     .describe("Electricity mix zone (ISO alpha-3, empty = provider default)")
