@@ -1,0 +1,32 @@
+{
+  "name": "eco-footprint",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Estimated environmental footprint (energy, CO2e) of your coding agents, powered by EcoLogits",
+  "license": "Apache-2.0",
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.11.2",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "@ecologits/ecologits.js": "^3.0.0"
+  }
+}

@@ -1,0 +1,201 @@
+import { open, readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { SESSIONS_DIR } from "./paths";
+
+export interface UsageTotals {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface SessionUsage {
+  /** Session directory name under the unified logs root. */
+  sessionId: string;
+  /** Vibe model name, or the default model when the session records none. */
+  model: string;
+  usage: UsageTotals;
+  /** Session start from meta.json, or the earliest journal file mtime. */
+  startMs: number | null;
+}
+
+export interface ScanResult {
+  /** Sessions with new usage records, one entry per session and model. */
+  sessions: SessionUsage[];
+  /** Byte offsets after this scan, to persist and pass to the next scan. */
+  offsets: Record<string, number>;
+}
+
+export interface ScanOptions {
+  /** Byte offset per journal file path, from the previous scan. */
+  offsets: Record<string, number>;
+  /** Model for sessions that do not record one. */
+  defaultModel: string;
+  /** Live model per session id, learned from Paseo on turn_ended. */
+  modelOverrides?: ReadonlyMap<string, string>;
+}
+
+export function emptyUsage(): UsageTotals {
+  return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0 };
+}
+
+export function addUsage(target: UsageTotals, add: UsageTotals): void {
+  target.inputTokens += add.inputTokens;
+  target.cachedInputTokens += add.cachedInputTokens;
+  target.outputTokens += add.outputTokens;
+  target.totalTokens += add.totalTokens;
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+// Extract the token usage of one journal record, or null for any other record.
+// Every line is parsed as JSON: the same strings also appear inside stored
+// tool outputs, so a text search would double-count.
+function usageOfRecord(record: unknown): UsageTotals | null {
+  if (typeof record !== "object" || record === null) return null;
+  const payload = (record as { payload?: unknown }).payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  const result = (payload as { result?: unknown }).result;
+  if (typeof result !== "object" || result === null) return null;
+  const outer = result as { type?: unknown; result?: unknown };
+  if (outer.type !== "completion_succeeded") return null;
+  if (typeof outer.result !== "object" || outer.result === null) return null;
+  const usage = (outer.result as { usage?: unknown }).usage;
+  if (typeof usage !== "object" || usage === null) return null;
+  const fields = usage as Record<string, unknown>;
+  return {
+    inputTokens: numberOrZero(fields.input_tokens),
+    cachedInputTokens: numberOrZero(fields.cached_input_tokens),
+    outputTokens: numberOrZero(fields.output_tokens),
+    totalTokens: numberOrZero(fields.total_tokens),
+  };
+}
+
+// Read the journal file from `offset` and return its complete new lines plus
+// the byte offset after them. An incomplete last line stays unread, so a
+// record written while we read is picked up on the next scan.
+async function readNewLines(
+  path: string,
+  offset: number,
+): Promise<{ lines: string[]; nextOffset: number }> {
+  const handle = await open(path, "r");
+  try {
+    const size = (await handle.stat()).size;
+    if (size === offset) return { lines: [], nextOffset: offset };
+    // A file smaller than the offset was replaced: read it from the start.
+    const start = offset >= 0 && offset < size ? offset : 0;
+    const buffer = Buffer.alloc(size - start);
+    await handle.read(buffer, 0, buffer.length, start);
+    const text = buffer.toString("utf8");
+    const lastNewline = text.lastIndexOf("\n");
+    if (lastNewline === -1) return { lines: [], nextOffset: start };
+    const consumed = text.slice(0, lastNewline + 1);
+    return {
+      lines: consumed.split("\n").filter((line) => line !== ""),
+      nextOffset: start + Buffer.byteLength(consumed),
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+interface SessionMeta {
+  model: string | null;
+  startMs: number | null;
+}
+
+async function readSessionMeta(sessionDir: string): Promise<SessionMeta> {
+  try {
+    const raw = await readFile(join(sessionDir, "meta.json"), "utf8");
+    const meta = JSON.parse(raw) as {
+      start_time?: unknown;
+      config?: { active_model?: unknown } | null;
+    };
+    const startMs =
+      typeof meta.start_time === "string" ? Date.parse(meta.start_time) : NaN;
+    return {
+      model:
+        typeof meta.config?.active_model === "string"
+          ? meta.config.active_model
+          : null,
+      startMs: Number.isFinite(startMs) ? startMs : null,
+    };
+  } catch {
+    // No meta.json (child sessions) or unreadable: no model, no start time.
+    return { model: null, startMs: null };
+  }
+}
+
+/** Scan every session journal for usage records not read yet. */
+export async function scanSessions(options: ScanOptions): Promise<ScanResult> {
+  // Start from the previous offsets so a failed read of one file keeps its
+  // old offset instead of re-reading that file from the start.
+  const offsets: Record<string, number> = { ...options.offsets };
+  const sessions = new Map<string, SessionUsage>();
+  let dirNames: string[] = [];
+  try {
+    dirNames = await readdir(SESSIONS_DIR);
+  } catch {
+    // A failed scan keeps the previous offsets, so nothing is re-read.
+    return { sessions: [], offsets: options.offsets };
+  }
+  for (const dirName of dirNames) {
+    const sessionDir = join(SESSIONS_DIR, dirName);
+    const journalDir = join(sessionDir, "journal");
+    let fileNames: string[] = [];
+    try {
+      fileNames = await readdir(journalDir);
+    } catch {
+      continue;
+    }
+    const meta = await readSessionMeta(sessionDir);
+    const model =
+      options.modelOverrides?.get(dirName) ?? meta.model ?? options.defaultModel;
+    let usage: UsageTotals | null = null;
+    // Session start fallback: the earliest journal file mtime.
+    let earliestMs: number | null = meta.startMs;
+    for (const fileName of fileNames) {
+      if (!fileName.endsWith(".jsonl")) continue;
+      const path = join(journalDir, fileName);
+      let mtimeMs: number | null = null;
+      try {
+        mtimeMs = (await stat(path)).mtimeMs;
+      } catch {
+        continue;
+      }
+      if (mtimeMs !== null && (earliestMs === null || mtimeMs < earliestMs)) {
+        earliestMs = mtimeMs;
+      }
+      let read: { lines: string[]; nextOffset: number };
+      try {
+        read = await readNewLines(path, options.offsets[path] ?? 0);
+      } catch {
+        continue;
+      }
+      offsets[path] = read.nextOffset;
+      for (const line of read.lines) {
+        let record: unknown;
+        try {
+          record = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const found = usageOfRecord(record);
+        if (!found) continue;
+        usage ??= emptyUsage();
+        addUsage(usage, found);
+      }
+    }
+    if (usage) {
+      sessions.set(`${dirName}\u0000${model}`, {
+        sessionId: dirName,
+        model,
+        usage,
+        startMs: earliestMs,
+      });
+    }
+  }
+  return { sessions: [...sessions.values()], offsets };
+}

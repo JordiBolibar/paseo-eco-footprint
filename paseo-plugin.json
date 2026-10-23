@@ -1,0 +1,15 @@
+{
+  "id": "eco-footprint",
+  "name": "Eco footprint",
+  "description": "Estimated environmental footprint (energy, CO2e) of your coding agents, powered by EcoLogits",
+  "requirements": {
+    "paseo": ">=0.11.1"
+  },
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--omit=dev"
+    ]
+  ]
+}
