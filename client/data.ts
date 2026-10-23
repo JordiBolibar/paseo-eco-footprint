@@ -71,22 +71,36 @@ export interface Swatch {
   opacity: number;
 }
 
+// Four distinct hues for the named model slots, so the stacked chart and the
+// legend stay readable even when the segments are thin. The theme only offers
+// one accent and neutrals, which made the old two-color swatches hard to
+// tell apart. Lighter shades on dark themes, darker ones on light themes.
+const MODEL_COLORS = {
+  dark: ["#34d399", "#60a5fa", "#fbbf24", "#a78bfa"],
+  light: ["#059669", "#2563eb", "#d97706", "#7c3aed"],
+} as const;
+
+// The theme does not say whether it is light or dark, so the surface color
+// does: a dark background means light text and lighter model colors fit.
+function isDarkSurface(theme: PluginTheme): boolean {
+  const hex = theme.colors.surface1.replace("#", "");
+  if (hex.length !== 6) return true;
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return 0.299 * red + 0.587 * green + 0.114 * blue < 128;
+}
+
 /**
- * Model identity colors. The theme offers one accent and neutrals; the status colors mean
- * health, not identity, so models get accent and muted steps instead. The order comes from the
- * report (heaviest model across all history first), so a model keeps its color across every
- * view, and every swatch sits next to a text label.
+ * Model identity colors. The order comes from the report (heaviest model
+ * across all history first), so a model keeps its color across every view,
+ * and every swatch sits next to a text label.
  */
 export function modelSwatch(theme: PluginTheme, order: readonly string[], model: string): Swatch {
-  const steps: Swatch[] = [
-    { color: theme.colors.accent, opacity: 1 },
-    { color: theme.colors.accent, opacity: 0.5 },
-    { color: theme.colors.foregroundMuted, opacity: 0.9 },
-    { color: theme.colors.foregroundMuted, opacity: 0.45 },
-  ];
   const index = order.indexOf(model);
   if (index < 0 || index >= MAX_NAMED_MODELS) return { color: theme.colors.border, opacity: 1 };
-  return steps[index] ?? { color: theme.colors.border, opacity: 1 };
+  const palette = isDarkSurface(theme) ? MODEL_COLORS.dark : MODEL_COLORS.light;
+  return { color: palette[index] ?? theme.colors.border, opacity: 1 };
 }
 
 export const EMPTY_IMPACTS: Impacts = {
