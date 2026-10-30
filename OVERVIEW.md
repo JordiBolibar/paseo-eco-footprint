@@ -30,11 +30,13 @@ an agent finishes a turn.
 
 Impacts are computed with `@ecologits/ecologits.js` (EcoLogits methodology):
 energy, CO2e (usage + embodied), from the model's parameter count and the
-output token count. Each provider is estimated with its own EcoLogits
-defaults (SWE for Mistral, USA for Anthropic); set another ISO alpha-3 zone
-in the plugin settings to override them. Models not in the EcoLogits data
-are estimated from a default parameter count (setting) and marked "est." in
-the UI.
+output token count. The Mistral GLM models take their throughput from a
+small table of OpenRouter measurements inside the plugin, because their
+EcoLogits entries ship no throughput data. Each provider is estimated with
+EcoLogits defaults (SWE for Mistral, USA for Anthropic); set another ISO
+alpha-3 zone in the plugin settings to override them. Models not in the
+EcoLogits data are estimated from a default parameter count (setting) and
+marked "est." in the UI.
 
 ## Limits
 

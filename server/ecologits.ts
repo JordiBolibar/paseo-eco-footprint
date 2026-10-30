@@ -1,12 +1,14 @@
 import {
   computeLlmImpacts,
   electricityMixes,
+  isParametersMoE,
   llmImpacts,
   lowerBound,
   models,
   PROVIDER_CONFIG_MAP,
   type Energy,
   type GWP,
+  type Model,
 } from "@ecologits/ecologits.js";
 import type { EcoSettings } from "./settings";
 
@@ -73,6 +75,79 @@ function numbersOf(
   };
 }
 
+// Real-world deployment stats for registered models whose EcoLogits entry
+// ships none (tps null). Without them the package estimates the generation
+// latency with a regression that assumes ~15 tokens/s for a 40B-active model,
+// far below the ~100 tokens/s these deployments really serve, which inflates
+// the server energy and embodied shares of every estimate. Impacts are
+// computed from the ledger at read time, so the correction also applies to
+// past sessions.
+// Source: OpenRouter endpoint stats of Mistral's own endpoints, p50
+// throughput and time to first token over 30-minute windows, retrieved
+// 2026-10-30; the median endpoint is used. GLM 5.3 (z-ai/glm-5.3-20260816):
+// 105.5 / 114 / 116 tok/s, 0.64 / 0.75 / 0.99 s. GLM 5.2
+// (z-ai/glm-5.2-20260616): 81.0 / 117.0 tok/s, 1.19 / 0.67 s; the vendored
+// glm-5-2 twin entry keeps EcoLogits' own older measurement (57.5 tok/s).
+// GLM 5 has no Mistral endpoints on OpenRouter, so it and zai-glm-latest (a
+// moving pointer at 5.3 today) borrow the 5.3 measurement.
+const DEPLOYMENT_STATS_OVERRIDES: Record<string, { tps: number; ttft: number }> = {
+  "zai-glm-5-3": { tps: 114, ttft: 0.75 },
+  "zai-glm-5-2": { tps: 99, ttft: 0.93 },
+  "zai-glm-5": { tps: 114, ttft: 0.75 },
+  "zai-glm-latest": { tps: 114, ttft: 0.75 },
+};
+
+/** Real deployment stats for a registered model whose EcoLogits entry has
+ * no throughput stats, or null when the entry carries its own or no
+ * override exists. The guard is on tps: without throughput the package's
+ * latency regression drives the estimate, which is what the override
+ * replaces. An override supplies tps and ttft together, so a hypothetical
+ * entry with a real ttft but no tps would have both replaced. */
+function deploymentStatsOverride(
+  registered: Model,
+  name: string,
+): { tps: number; ttft: number } | null {
+  if (registered.deployment?.tps != null) return null;
+  return DEPLOYMENT_STATS_OVERRIDES[name] ?? null;
+}
+
+/** Impacts of a registered model computed with real deployment stats instead
+ * of the latency fallback: the package methodology, one direct call. Null
+ * when the computation fails, so the caller can use the registered path. */
+function impactsWithDeploymentStats(
+  registered: Model,
+  outputTokens: number,
+  stats: { tps: number; ttft: number },
+  mixZone: string,
+): Omit<ModelImpacts, "estimated"> | null {
+  const mix = electricityMixes.findElectricityMix(mixZone);
+  if (!mix) return null;
+  const parameters = registered.architecture.parameters;
+  const counts = isParametersMoE(parameters)
+    ? { active: parameters.active, total: parameters.total }
+    : { active: parameters, total: parameters };
+  const providerConfig = PROVIDER_CONFIG_MAP[registered.provider];
+  try {
+    const result = computeLlmImpacts({
+      modelActiveParameterCount: counts.active,
+      modelTotalParameterCount: counts.total,
+      outputTokenCount: outputTokens,
+      requestLatency: UNBOUNDED_LATENCY_S,
+      tps: stats.tps,
+      ttft: stats.ttft,
+      ifElectricityMixAdpe: mix.adpe,
+      ifElectricityMixPe: mix.pe,
+      ifElectricityMixGwp: mix.gwp,
+      ifElectricityMixWue: mix.wue,
+      datacenterPue: providerConfig.datacenterPue,
+      datacenterWue: providerConfig.datacenterWue,
+    });
+    return numbersOf(result.energy, result.gwp, result.embodied.gwp);
+  } catch {
+    return null;
+  }
+}
+
 /** Estimate the impacts of `outputTokens` generated tokens of one model. */
 export function computeModelImpacts(
   model: string,
@@ -90,7 +165,15 @@ export function computeModelImpacts(
   const mixZone = zoneIsProviderDefault(settings.electricityMixZone)
     ? resolveZone(settings.electricityMixZone, provider)
     : zone;
-  if (models.findModel(provider, name)) {
+  const registered = models.findModel(provider, name);
+  if (registered) {
+    const stats = deploymentStatsOverride(registered, name);
+    if (stats) {
+      const impacts = impactsWithDeploymentStats(registered, outputTokens, stats, mixZone);
+      if (impacts) {
+        return { ...impacts, estimated: false };
+      }
+    }
     try {
       const result = llmImpacts({
         provider,

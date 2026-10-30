@@ -37,10 +37,13 @@ offsets) and refreshes when an agent finishes a turn.
 Impacts are computed with
 [@ecologits/ecologits.js](https://www.npmjs.com/package/@ecologits/ecologits.js),
 the TypeScript port of the EcoLogits methodology: energy and CO2e (usage +
-embodied) from the model's parameter count and the output token count. Each
-provider is estimated with its own EcoLogits defaults (Mistral models with
-the Swedish mix, Anthropic models with the US mix). Days are grouped in
-your timezone, the one Paseo runs in for you, not the daemon's.
+embodied) from the model's parameter count and the output token count. The
+Mistral GLM models take their throughput from a small table of OpenRouter
+measurements inside the plugin, because their EcoLogits entries ship no
+throughput data. Each provider is estimated with its own EcoLogits
+defaults (Mistral models with the Swedish mix, Anthropic models with the
+US mix). Days are grouped in your timezone, the one Paseo runs in for
+you, not the daemon's.
 
 Nothing leaves your machine: all data is read locally and the EcoLogits model
 data is compiled into the package.

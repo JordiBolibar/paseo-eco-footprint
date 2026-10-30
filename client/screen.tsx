@@ -220,6 +220,7 @@ function Efficiency({
       : `Electricity mix zone: ${report.zone}, set in the plugin settings.`,
     `Sessions that do not record a model are counted as ${report.defaultModel}.`,
     "Models that are not in the EcoLogits data are estimated from a default size and marked \"est.\".",
+    "Mistral GLM models take their throughput from a small table of OpenRouter measurements inside the plugin, because their EcoLogits entries have none.",
   ];
   if (report.historyEstimated) {
     lines.push(
