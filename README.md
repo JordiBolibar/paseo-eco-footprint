@@ -40,10 +40,12 @@ the TypeScript port of the EcoLogits methodology: energy and CO2e (usage +
 embodied) from the model's parameter count and the output token count. The
 Mistral GLM models take their throughput from a small table of OpenRouter
 measurements inside the plugin, because their EcoLogits entries ship no
-throughput data. Each provider is estimated with its own EcoLogits
-defaults (Mistral models with the Swedish mix, Anthropic models with the
-US mix). Days are grouped in your timezone, the one Paseo runs in for
-you, not the daemon's.
+throughput data. Mistral Large 4 is not in the EcoLogits data yet, so the
+plugin uses its official size (1.05T total / 52B active parameters) and
+measured OpenRouter throughput from a small local table. Each provider is
+estimated with its own EcoLogits defaults (Mistral models with the Swedish
+mix, Anthropic models with the US mix). Days are grouped in your timezone,
+the one Paseo runs in for you, not the daemon's.
 
 Nothing leaves your machine: all data is read locally and the EcoLogits model
 data is compiled into the package.

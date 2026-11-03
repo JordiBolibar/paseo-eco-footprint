@@ -219,8 +219,9 @@ function Efficiency({
       ? "Electricity mix zone: each provider's EcoLogits assumption (Sweden for Mistral, USA for Anthropic), not a measured region. Set a zone in the plugin settings to override it."
       : `Electricity mix zone: ${report.zone}, set in the plugin settings.`,
     `Sessions that do not record a model are counted as ${report.defaultModel}.`,
-    "Models that are not in the EcoLogits data are estimated from a default size and marked \"est.\".",
+    "Other models that are not in the EcoLogits data are estimated from a default size and marked \"est.\".",
     "Mistral GLM models take their throughput from a small table of OpenRouter measurements inside the plugin, because their EcoLogits entries have none.",
+    "Mistral Large 4 is not in the EcoLogits data yet, so its official size (1.05T total / 52B active) and measured OpenRouter throughput come from a small local table.",
   ];
   if (report.historyEstimated) {
     lines.push(

@@ -97,6 +97,19 @@ const DEPLOYMENT_STATS_OVERRIDES: Record<string, { tps: number; ttft: number }> 
   "zai-glm-latest": { tps: 114, ttft: 0.75 },
 };
 
+// Public specs for models the vendored EcoLogits data does not know yet
+// (synced 2026-10-02). Mistral Large 4 was released 2026-10-06 with open
+// weights, so its architecture is public: a granular MoE with 1.05T total /
+// 52B active parameters (docs.mistral.ai/models/mistral-large-4-0; HF config
+// of mistralai/Mistral-Large-4-1T-A52B: 128 routed experts + 1 shared, 4
+// experts per token). Throughput: median p50 of Mistral's own OpenRouter
+// endpoint (mistralai/mistral-large-4-0-20261006) over three 30-minute
+// windows, 89 / 98 / 104 tok/s and 1.68 / 1.18 / 1.48 s, retrieved 2026-11-03.
+const KNOWN_SPECS: Record<string, { total: number; active: number; tps: number; ttft: number }> = {
+  "mistral-large-4": { total: 1050, active: 52, tps: 98, ttft: 1.48 },
+  "mistral-large-4-0": { total: 1050, active: 52, tps: 98, ttft: 1.48 },
+};
+
 /** Real deployment stats for a registered model whose EcoLogits entry has
  * no throughput stats, or null when the entry carries its own or no
  * override exists. The guard is on tps: without throughput the package's
@@ -192,19 +205,24 @@ export function computeModelImpacts(
       // Fall through to the default parameter count below.
     }
   }
-  // Unknown model: assume a dense model with the configured parameter count.
+  // Unknown to the EcoLogits data: use the public specs when we have them
+  // (open-weight models released after the data sync), else assume a dense
+  // model with the configured parameter count.
   const mix = electricityMixes.findElectricityMix(mixZone);
   if (!mix) {
     return { energyWh: 0, gwpGco2eq: 0, gwpEmbodiedGco2eq: 0, estimated: true };
   }
   const providerConfig = PROVIDER_CONFIG_MAP[provider];
-  const parameters = settings.defaultParameterCountBillions;
+  const known = KNOWN_SPECS[name];
+  const active = known?.active ?? settings.defaultParameterCountBillions;
+  const total = known?.total ?? settings.defaultParameterCountBillions;
   try {
     const result = computeLlmImpacts({
-      modelActiveParameterCount: parameters,
-      modelTotalParameterCount: parameters,
+      modelActiveParameterCount: active,
+      modelTotalParameterCount: total,
       outputTokenCount: outputTokens,
       requestLatency: UNBOUNDED_LATENCY_S,
+      ...(known ? { tps: known.tps, ttft: known.ttft } : {}),
       ifElectricityMixAdpe: mix.adpe,
       ifElectricityMixPe: mix.pe,
       ifElectricityMixGwp: mix.gwp,
@@ -212,7 +230,7 @@ export function computeModelImpacts(
       datacenterPue: providerConfig.datacenterPue,
       datacenterWue: providerConfig.datacenterWue,
     });
-    return { ...numbersOf(result.energy, result.gwp, result.embodied.gwp), estimated: true };
+    return { ...numbersOf(result.energy, result.gwp, result.embodied.gwp), estimated: !known };
   } catch {
     return { energyWh: 0, gwpGco2eq: 0, gwpEmbodiedGco2eq: 0, estimated: true };
   }
