@@ -63,7 +63,7 @@ export function typicalDay(daily: readonly FootprintPeriod[]): TypicalDay {
 }
 
 /** Named series before the rest fold into "Other". */
-export const MAX_NAMED_MODELS = 4;
+export const MAX_NAMED_MODELS = 8;
 export const OTHER_MODEL = "other";
 
 export interface Swatch {
@@ -71,13 +71,13 @@ export interface Swatch {
   opacity: number;
 }
 
-// Four distinct hues for the named model slots, so the stacked chart and the
+// Eight distinct hues for the named model slots, so the stacked chart and the
 // legend stay readable even when the segments are thin. The theme only offers
 // one accent and neutrals, which made the old two-color swatches hard to
 // tell apart. Lighter shades on dark themes, darker ones on light themes.
 const MODEL_COLORS = {
-  dark: ["#34d399", "#60a5fa", "#fbbf24", "#a78bfa"],
-  light: ["#059669", "#2563eb", "#d97706", "#7c3aed"],
+  dark: ["#34d399", "#60a5fa", "#fbbf24", "#a78bfa", "#f472b6", "#22d3ee", "#fb923c", "#a3e635"],
+  light: ["#059669", "#2563eb", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#ea580c", "#65a30d"],
 } as const;
 
 // The theme does not say whether it is light or dark, so the surface color
