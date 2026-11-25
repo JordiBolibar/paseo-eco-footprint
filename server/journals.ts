@@ -50,6 +50,18 @@ export function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+// The same underlying model can reach the ledger under several names: a
+// config alias, a provider name, a name learned from Paseo. Map every known
+// alias to one canonical name so the report shows a single row per model.
+const MODEL_ALIASES: Record<string, string> = {
+  "zai-glm-5-3": "glm-5-3",
+};
+
+/** The canonical name of a model: known aliases collapse into one. */
+export function canonicalModel(model: string): string {
+  return MODEL_ALIASES[model] ?? model;
+}
+
 // Read files in chunks instead of one buffer: Claude Code session logs can
 // be hundreds of megabytes.
 const CHUNK_BYTES = 4 * 1024 * 1024;
@@ -180,8 +192,9 @@ export async function scanSessions(options: ScanOptions): Promise<ScanResult> {
       continue;
     }
     const meta = await readSessionMeta(sessionDir);
-    const model =
-      options.modelOverrides?.get(dirName) ?? meta.model ?? options.defaultModel;
+    const model = canonicalModel(
+      options.modelOverrides?.get(dirName) ?? meta.model ?? options.defaultModel,
+    );
     let usage: UsageTotals | null = null;
     // Session start fallback: the earliest journal file mtime.
     let earliestMs: number | null = meta.startMs;
